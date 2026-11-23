@@ -1,50 +1,57 @@
-# Welcome to your Expo app 👋
+# Go Dutch (iOS)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+The mobile client and backend for **Go Dutch**, an app for splitting restaurant bills with friends.
 
-## Get started
+This repo holds the receipt-scanning pipeline:
 
-1. Install dependencies
+1. Photograph a receipt.
+2. A vision model turns it into structured line items, tax, tip and totals.
+3. The result is saved to your account, ready to split.
 
-   ```bash
-   npm install
-   ```
+## What it does
 
-2. Start the app
+- **Capture.** Take a photo or pick one from your library, from the Expo app.
+- **Parse.** A Firebase Cloud Function sends the image to Google Gemini at temperature 0, with a prompt written for real-world receipts:
+  - multilingual item names, kept whole (for example `2. 冰沙草莓得其利 Strawberry Daiquiri`), without mistaking numbers inside a name for quantities
+  - add-ons folded into their parent item's price
+  - customer copies with handwritten totals or a missing tip, without inventing values
+  - currency inferred from symbols or location
+- **Store.** Authenticated endpoints save, load and update receipts in MongoDB.
 
-   ```bash
-    npx expo start
-   ```
+Output schema: `meta_data` (restaurant, address, times, guest count), `items[]` (name, quantity, total), and `payment` (subtotal, tax, tip, total, currency).
 
-In the output, you'll find options to open the app in a
+## Architecture
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+Expo / React Native app ──(Firebase Auth ID token)──► Firebase Cloud Functions
+                                                        ├── processReceipt ──► Gemini (vision → JSON)
+                                                        ├── saveReceipt
+                                                        ├── loadReceiptById ──► MongoDB (receipts)
+                                                        └── updateReceiptById
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+**Stack:** React Native (Expo Router, TypeScript), Firebase Auth and Cloud Functions (Node.js), Google Gemini API, MongoDB.
 
-## Learn more
+## Run it
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+npm install
+npx expo start                 # app (iOS simulator, device, or web)
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+cd functions && npm install    # backend
+firebase emulators:start --only functions
+```
 
-## Join the community
+The functions read `GEMINI_API_KEY` and `MONGODB_URI` from the environment.
 
-Join our community of developers creating universal apps.
+## Layout
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- `app/(tabs)/receipt.tsx`: capture, parse, review and save screen
+- `app/services/`: API client and auth helpers
+- `app/contexts/AuthContext.tsx`: Firebase auth state
+- `functions/src/`: the four Cloud Functions
+- `functions/lib/`: auth token verification and MongoDB access
+
+## Team
+
+Built by Mina Wang and Yiheng Zhu.
